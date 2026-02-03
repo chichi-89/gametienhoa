@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Evolution Survival: The Tree of Life</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;700;900&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #00f2ff;
+            --secondary: #7000ff;
+            --danger: #ff0055;
+            --success: #00ff88;
+        }
+        body {
+            font-family: 'Be Vietnam Pro', sans-serif;
+            background: #0a0a0c;
+            color: #e2e8f0;
+            overflow-x: hidden;
+            user-select: none;
+        }
+        .title-font { font-family: 'Space Grotesk', sans-serif; }
+        
+        /* Chấn động màn hình khi sai */
+        @keyframes shake {
+            0% { transform: translate(1px, 1px) rotate(0deg); }
+            10% { transform: translate(-1px, -2px) rotate(-1deg); }
+            30% { transform: translate(3px, 2px) rotate(0deg); }
+            50% { transform: translate(-1px, 2px) rotate(1deg); }
+            100% { transform: translate(1px, 1px) rotate(0deg); }
+        }
+        .shake { animation: shake 0.5s; }
+
+        /* Hiệu ứng Glitch tinh tế hơn để không gây khó đọc */
+        .glitch-text {
+            position: relative;
+            display: inline-block;
+        }
+        .glitch-text::after {
+            content: attr(data-text);
+            position: absolute;
+            left: 2px;
+            text-shadow: -1px 0 var(--danger);
+            top: 0;
+            overflow: hidden;
+            clip: rect(0, 900px, 0, 0); 
+            animation: noise-anim 2s infinite linear alternate-reverse;
+        }
+
+        @keyframes noise-anim {
+            0% { clip: rect(10px, 9999px, 20px, 0); }
+            20% { clip: rect(30px, 9999px, 40px, 0); }
+            /* ... (tiết chế hiệu ứng) */
+        }
+
+        .health-bar-fill {
+            transition: width 0.4s ease-out;
+        }
+
+        .ans-card {
+            background: rgba(30, 41, 59, 0.7);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            min-height: 60px;
+        }
+        .ans-card:hover:not(:disabled) {
+            background: rgba(112, 0, 255, 0.2);
+            border-color: var(--primary);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 20px rgba(0, 242, 255, 0.15);
+        }
+        .ans-card:active:not(:disabled) {
+            transform: scale(0.98);
+        }
+
+        .frenzy-overlay {
+            box-shadow: inset 0 0 100px rgba(112, 0, 255, 0.4);
+            pointer-events: none;
+        }
+
+        /* Tối ưu thanh cuộn nếu câu hỏi quá dài trên mobile */
+        .custom-scroll::-webkit-scrollbar { width: 4px; }
+        .custom-scroll::-webkit-scrollbar-track { background: transparent; }
+        .custom-scroll::-webkit-scrollbar-thumb { background: #334155; border-radius: 10px; }
+    </style>
+</head>
+<body class="min-h-screen flex items-center justify-center p-2 md:p-6">
+
+    <!-- Overlay mờ khi mất máu -->
+    <div id="damage-overlay" class="fixed inset-0 bg-red-600/20 opacity-0 pointer-events-none transition-opacity z-50"></div>
+
+    <!-- MÀN HÌNH BẮT ĐẦU -->
+    <div id="start-screen" class="z-20 max-w-xl w-full text-center space-y-8 p-8 md:p-12 rounded-2xl border border-white/10 bg-slate-900/90 backdrop-blur-xl shadow-2xl">
+        <div class="space-y-2">
+            <h1 class="title-font text-5xl md:text-7xl font-black italic tracking-tighter text-white" data-text="EVOLUTION">EVOLUTION</h1>
+            <h2 class="title-font text-3xl md:text-5xl font-bold text-cyan-400 tracking-widest">SURVIVAL</h2>
+        </div>
+        
+        <div class="space-y-6">
+            <div class="p-4 bg-white/5 rounded-xl text-slate-300 text-sm leading-relaxed border border-white/5">
+                Chinh phục 20 thử thách về tiến hóa Sinh học 12. <br>
+                Trả lời sai hoặc hết thời gian sẽ tiêu tốn năng lượng sinh tồn.
+            </div>
+            
+            <div class="relative group">
+                <input type="text" id="player-name" placeholder="NHẬP TÊN CỦA BẠN..." 
+                    class="w-full px-6 py-4 bg-black/40 border-2 border-slate-700 rounded-xl text-white focus:outline-none focus:border-cyan-500 text-center text-xl font-bold transition-all">
+            </div>
+
+            <button onclick="startGame()" class="w-full bg-cyan-500 hover:bg-cyan-400 text-black font-black py-4 rounded-xl text-xl title-font uppercase shadow-[0_0_30px_rgba(6,182,212,0.4)] transition-all transform active:scale-95">
+                BẮT ĐẦU NHIỆM VỤ
+            </button>
+        </div>
+    </div>
+
+    <!-- MÀN HÌNH CHƠI -->
+    <div id="game-screen" class="hidden w-full max-w-6xl flex flex-col gap-4 relative animate-fade-in">
+        <!-- HUD System -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <!-- HP & Status -->
+            <div class="bg-slate-900/80 p-4 rounded-xl border border-white/5 flex flex-col gap-2">
+                <div class="flex justify-between items-center">
+                    <span class="text-[10px] font-bold text-red-400 tracking-tighter uppercase">Năng lượng sinh tồn</span>
+                    <span id="hp-text" class="title-font text-lg font-bold">100%</span>
+                </div>
+                <div class="h-2 bg-slate-800 rounded-full overflow-hidden">
+                    <div id="hp-bar" class="health-bar-fill h-full bg-gradient-to-r from-red-600 to-pink-500 w-full"></div>
+                </div>
+            </div>
+
+            <!-- Score Center -->
+            <div class="bg-slate-900/80 p-4 rounded-xl border border-cyan-500/30 flex flex-col items-center justify-center relative">
+                <div id="combo-container" class="absolute -top-2 right-2 hidden">
+                    <span class="bg-yellow-400 text-black px-2 py-0.5 rounded text-[10px] font-black italic">COMBO x<span id="combo-val">0</span></span>
+                </div>
+                <span class="text-[10px] font-bold text-cyan-400 uppercase">Điểm tiến hóa</span>
+                <span id="score-val" class="text-3xl font-black title-font text-white leading-none">000,000</span>
+            </div>
+
+            <!-- Progress & Timer -->
+            <div class="bg-slate-900/80 p-4 rounded-xl border border-white/5 flex flex-col gap-2">
+                <div class="flex justify-between items-center">
+                    <span class="text-[10px] font-bold text-purple-400 uppercase">Kỷ nguyên: <span id="current-idx">01</span>/20</span>
+                    <span id="timer-val" class="title-font text-lg font-bold text-orange-500">15.0s</span>
+                </div>
+                <div class="h-2 bg-slate-800 rounded-full overflow-hidden">
+                    <div id="progress-bar" class="h-full bg-purple-500 w-0 transition-all"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Arena -->
+        <div id="arena" class="grid grid-cols-1 lg:grid-cols-4 gap-4 flex-grow h-full">
+            <!-- Question Side -->
+            <div class="lg:col-span-3 flex flex-col gap-4">
+                <div class="bg-slate-900/90 p-6 md:p-10 rounded-2xl border border-white/10 shadow-xl flex-grow overflow-y-auto custom-scroll">
+                    <div class="flex items-center gap-3 mb-6">
+                        <span id="q-level" class="px-3 py-1 bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 text-[10px] font-bold rounded-full uppercase tracking-wider">Đang phân tích dữ liệu...</span>
+                    </div>
+                    
+                    <h2 id="question-text" class="text-xl md:text-2xl font-bold leading-relaxed text-white mb-8">
+                        Đang nạp dữ liệu câu hỏi từ hệ thống...
+                    </h2>
+                    
+                    <div id="options-grid" class="grid grid-cols-1 gap-3">
+                        <!-- Options Injected Here -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Side Info -->
+            <div class="hidden lg:flex flex-col gap-4">
+                <div class="bg-slate-900/80 p-6 rounded-2xl border border-white/5 flex-grow flex flex-col items-center justify-center">
+                    <div id="status-icon" class="mb-4 text-cyan-500">
+                        <svg class="w-16 h-16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.628.282a2 2 0 01-1.808 0l-.628-.282a6 6 0 00-3.86-.517l-2.387.477a2 2 0 00-1.022.547m0 0l2.224 4.447a1 1 0 00.894.553h11.564a1 1 0 00.894-.553l2.224-4.447m-24.448 0H4.6a2 2 0 011.614-.806 2 2 0 011.614.806m0 0l.4.8M15 7h.01M19 12h.01M11 12h.01m4 4h.01m-4 4h.01m-9.28 0H6a2 2 0 011.614-.806 2 2 0 011.614.806m0 0l.4.8"></path></svg>
+                    </div>
+                    <p id="status-msg" class="text-xs font-bold text-cyan-400 text-center tracking-widest uppercase mb-6">Hệ thống ổn định</p>
+                    
+                    <div class="w-full space-y-4">
+                        <div class="p-4 bg-black/40 rounded-xl border border-white/5">
+                            <p class="text-[10px] text-slate-500 uppercase font-bold mb-2">Kỷ lục hiện tại</p>
+                            <div class="flex justify-between items-end">
+                                <span class="text-sm font-bold text-white">GHOST RACER</span>
+                                <span class="text-xs text-slate-400">12,500</span>
+                            </div>
+                            <div class="h-1 bg-slate-800 rounded-full mt-2">
+                                <div id="ghost-progress" class="h-full bg-cyan-500 w-0 transition-all duration-1000"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MÀN HÌNH KẾT THÚC -->
+    <div id="end-screen" class="hidden z-20 max-w-xl w-full p-8 md:p-12 bg-slate-900 border border-white/10 rounded-3xl text-center space-y-8 shadow-2xl">
+        <h2 id="end-title" class="title-font text-5xl font-black italic">THẤT BẠI</h2>
+        <div class="py-6 border-y border-white/5">
+            <p class="text-slate-400 uppercase tracking-widest text-[10px] font-bold mb-2">Điểm số thu thập được</p>
+            <p id="final-score" class="text-6xl font-black title-font text-cyan-400">0</p>
+        </div>
+        <div class="grid grid-cols-2 gap-4">
+            <div class="bg-white/5 p-4 rounded-2xl">
+                <p class="text-[10px] text-slate-500 uppercase font-bold">Độ chính xác</p>
+                <p id="stat-acc" class="text-xl font-bold text-white">0%</p>
+            </div>
+            <div class="bg-white/5 p-4 rounded-2xl">
+                <p class="text-[10px] text-slate-500 uppercase font-bold">Combo cao nhất</p>
+                <p id="stat-combo" class="text-xl font-bold text-white">0</p>
+            </div>
+        </div>
+        <button onclick="location.reload()" class="w-full bg-white text-black font-black py-4 rounded-2xl text-lg title-font hover:bg-cyan-500 transition-all transform active:scale-95">
+            TÁI KHỞI ĐỘNG HỆ THỐNG
+        </button>
+    </div>
+
+    <!-- Hiệu ứng đặc biệt -->
+    <div id="frenzy-fx" class="fixed inset-0 frenzy-overlay opacity-0 transition-opacity duration-500 z-10"></div>
+
+    <script>
+        const questionBank = [
+            { q: "Tiến hoá nhỏ là quá trình biến đổi cấu trúc di truyền của đối tượng nào sau đây?", a: ["Quần thể", "Cá thể sinh vật", "Loài sinh học", "Hệ sinh thái"], c: 0, level: "Nhận biết" },
+            { q: "Kết quả của quá trình tiến hoá nhỏ là sự hình thành của đơn vị nào?", a: ["Loài mới", "Chi mới hoặc Họ mới", "Bộ mới hoặc Lớp mới", "Các nhóm phân loại trên loài"], c: 0, level: "Nhận biết" },
+            { q: "Nhân tố nào sau đây đóng vai trò cung cấp nguồn biến dị sơ cấp cho quá trình tiến hóa?", a: ["Đột biến", "Giao phối không ngẫu nhiên", "Chọn lọc tự nhiên", "Các yếu tố ngẫu nhiên"], c: 0, level: "Nhận biết" },
+            { q: "Đặc điểm quan trọng nhất của chọn lọc tự nhiên theo thuyết hiện đại là gì?", a: ["Phân hóa khả năng sống sót và sinh sản của các kiểu gen", "Tạo ra các tổ hợp kiểu gen mới thích nghi hơn", "Thay đổi tần số alen không theo một hướng xác định", "Loại bỏ hoàn toàn các alen có hại ra khỏi quần thể"], c: 0, level: "Thông hiểu" },
+            { q: "Nhân tố tiến hóa nào có thể làm thay đổi tần số alen một cách đột ngột không theo hướng xác định?", a: ["Các yếu tố ngẫu nhiên (phiêu bạt di truyền)", "Chọn lọc tự nhiên", "Đột biến gen", "Di - nhập gen"], c: 0, level: "Thông hiểu" },
+            { q: "Cơ chế cách li nào ngăn cản các cá thể thuộc các loài khác nhau có thể giao phối với nhau?", a: ["Cách li trước hợp tử", "Cách li sau hợp tử", "Cách li cơ quan bộ phận", "Cách li di truyền tế bào"], c: 0, level: "Nhận biết" },
+            { q: "Hình thành loài mới bằng con đường lai xa và đa bội hóa thường phổ biến nhất ở nhóm nào?", a: ["Thực vật", "Động vật có vú", "Các loài côn trùng", "Các loài chim"], c: 0, level: "Thông hiểu" },
+            { q: "Tiến hoá lớn là quá trình hình thành các đơn vị phân loại nào sau đây?", a: ["Các đơn vị trên loài (Chi, Họ, Bộ, Lớp...)", "Các quần thể thích nghi mới", "Các alen mới trong quần thể", "Các cá thể mang đột biến có lợi"], c: 0, level: "Nhận biết" },
+            { q: "Dựa vào sơ đồ cây sự sống, chúng ta có thể khẳng định điều gì về các loài sinh vật?", a: ["Tất cả các loài sinh giới đều có chung một nguồn gốc", "Các loài luôn đứng yên và không thay đổi qua thời gian", "Các loài khác nhau có tốc độ tiến hóa hoàn toàn bằng nhau", "Mọi sinh vật đều xuất hiện cùng một thời điểm"], c: 0, level: "Thông hiểu" },
+            { q: "Tại sao các đặc điểm thích nghi trên cơ thể sinh vật chỉ mang tính hợp lí tương đối?", a: ["Vì môi trường luôn biến đổi và đột biến có thể thay đổi giá trị thích nghi", "Vì đột biến gen luôn gây hại cho sinh vật trong mọi điều kiện", "Vì chọn lọc tự nhiên là một quá trình hoàn hảo và tuyệt đối", "Vì sinh vật không thể tự biến đổi để phù hợp với môi trường mới"], c: 0, level: "Vận dụng" },
+            { q: "Theo học thuyết tiến hóa hiện đại, đơn vị tiến hóa cơ bản nhất là gì?", a: ["Quần thể", "Cá thể", "Dòng họ", "Hệ sinh thái"], c: 0, level: "Nhận biết" },
+            { q: "Nhân tố nào sau đây là nhân tố duy nhất có thể tạo ra các alen mới trong quần thể?", a: ["Đột biến", "Chọn lọc tự nhiên", "Giao phối ngẫu nhiên", "Cách li địa lí"], c: 0, level: "Thông hiểu" },
+            { q: "Cách li địa lí có vai trò chủ yếu nào trong quá trình hình thành loài mới?", a: ["Ngăn cản các quần thể giao phối tự do, duy trì sự khác biệt", "Tạo ra trực tiếp các đột biến gen có lợi cho môi trường mới", "Làm thay đổi kiểu hình của sinh vật một cách nhanh chóng", "Loại bỏ hoàn toàn các alen lặn có hại khỏi vốn gen"], c: 0, level: "Thông hiểu" },
+            { q: "Loài mới có thể được hình thành nhanh chóng nhất thông qua con đường nào sau đây?", a: ["Đột biến đa bội hóa", "Cách li sinh thái lâu dài", "Cách li tập tính giao phối", "Cách li địa lí kéo dài"], c: 0, level: "Vận dụng" },
+            { q: "Trong các nhân tố sau, nhân tố nào không làm thay đổi tần số alen của quần thể?", a: ["Giao phối ngẫu nhiên", "Đột biến gen", "Chọn lọc tự nhiên", "Di - nhập gen"], c: 0, level: "Thông hiểu" },
+            { q: "Nhân tố nào quy định chiều hướng và tốc độ của quá trình tiến hóa?", a: ["Chọn lọc tự nhiên", "Đột biến", "Các yếu tố ngẫu nhiên", "Giao phối không ngẫu nhiên"], c: 0, level: "Thông hiểu" },
+            { q: "Sự phát sinh chủng loại của sinh giới được biểu thị sinh động nhất qua:", a: ["Sơ đồ cây sự sống", "Các hóa thạch tìm thấy", "Sự phân bố địa lí", "Cấu trúc của phân tử DNA"], c: 0, level: "Nhận biết" },
+            { q: "Hiện tượng một loài được chia thành nhiều loài con để thích nghi với các môi trường khác nhau gọi là:", a: ["Phân li tính trạng", "Đồng quy tiến hóa", "Đột biến liên tiếp", "Giao phối cận huyết"], c: 0, level: "Thông hiểu" },
+            { q: "Cơ chế cách li sau hợp tử thể hiện ở việc:", a: ["Hợp tử bị chết hoặc con lai bất thụ", "Các loài có mùa sinh sản khác nhau", "Tập tính giao phối hoàn toàn khác biệt", "Cơ quan sinh sản không tương thích"], c: 0, level: "Thông hiểu" },
+            { q: "Nhân tố nào có thể làm tăng sự đa dạng di truyền của một quần thể?", a: ["Đột biến và di gen", "Chọn lọc tự nhiên", "Các yếu tố ngẫu nhiên", "Giao phối không ngẫu nhiên"], c: 0, level: "Vận dụng" }
+        ];
+
+        let state = {
+            hp: 100,
+            score: 0,
+            currentIdx: 0,
+            combo: 0,
+            maxCombo: 0,
+            correctCount: 0,
+            timeLeft: 15,
+            playerName: "",
+            questions: []
+        };
+
+        let timerInterval;
+
+        function startGame() {
+            state.playerName = document.getElementById('player-name').value.trim() || "CHIẾN BINH";
+            state.questions = [...questionBank].sort(() => 0.5 - Math.random()).slice(0, 20);
+            
+            document.getElementById('start-screen').classList.add('hidden');
+            document.getElementById('game-screen').classList.remove('hidden');
+            
+            updateHUD();
+            loadQuestion();
+            
+            // Giả lập đối thủ ảo
+            let ghostProg = 0;
+            const ghostInterval = setInterval(() => {
+                if(state.hp <= 0 || state.currentIdx >= 20) clearInterval(ghostInterval);
+                ghostProg += 0.4; // Tốc độ đối thủ
+                document.getElementById('ghost-progress').style.width = Math.min(100, ghostProg) + "%";
+            }, 500);
+        }
+
+        function loadQuestion() {
+            if (state.currentIdx >= state.questions.length) {
+                endGame(true);
+                return;
+            }
+
+            const q = state.questions[state.currentIdx];
+            document.getElementById('current-idx').innerText = (state.currentIdx + 1).toString().padStart(2, '0');
+            document.getElementById('q-level').innerText = "Cấp độ: " + q.level;
+            document.getElementById('question-text').innerText = q.q;
+            document.getElementById('progress-bar').style.width = ((state.currentIdx / 20) * 100) + "%";
+
+            const optionsGrid = document.getElementById('options-grid');
+            optionsGrid.innerHTML = '';
+
+            const shuffledOptions = q.a.map((text, i) => ({text, i})).sort(() => 0.5 - Math.random());
+
+            shuffledOptions.forEach((opt, idx) => {
+                const btn = document.createElement('button');
+                btn.className = "ans-card w-full p-4 rounded-xl text-left text-sm md:text-base font-medium flex items-start gap-4";
+                btn.innerHTML = `
+                    <span class="flex-shrink-0 w-6 h-6 rounded bg-white/10 flex items-center justify-center text-[10px] font-bold border border-white/10">${String.fromCharCode(65 + idx)}</span>
+                    <span class="flex-grow">${opt.text}</span>
+                `;
+                btn.onclick = () => checkAnswer(opt.i, q.c);
+                optionsGrid.appendChild(btn);
+            });
+
+            resetTimer();
+        }
+
+        function resetTimer() {
+            clearInterval(timerInterval);
+            state.timeLeft = 15;
+            updateTimerDisplay();
+            
+            timerInterval = setInterval(() => {
+                state.timeLeft -= 0.1;
+                updateTimerDisplay();
+                
+                if (state.timeLeft <= 0) {
+                    clearInterval(timerInterval);
+                    takeDamage(20);
+                    showStatus("HẾT THỜI GIAN!", "text-orange-500");
+                    setTimeout(nextQuestion, 1000);
+                }
+            }, 100);
+        }
+
+        function updateTimerDisplay() {
+            const el = document.getElementById('timer-val');
+            el.innerText = Math.max(0, state.timeLeft).toFixed(1) + "s";
+            if (state.timeLeft < 5) el.className = "title-font text-lg font-bold text-red-500 animate-pulse";
+            else el.className = "title-font text-lg font-bold text-orange-500";
+        }
+
+        function checkAnswer(selected, correct) {
+            clearInterval(timerInterval);
+            const isCorrect = selected === correct;
+            const buttons = document.querySelectorAll('.ans-card');
+            buttons.forEach(b => b.disabled = true);
+
+            if (isCorrect) {
+                state.combo++;
+                state.correctCount++;
+                state.maxCombo = Math.max(state.maxCombo, state.combo);
+                
+                let points = Math.ceil(state.timeLeft * 100);
+                if (state.combo >= 3) {
+                    points *= 2;
+                    triggerFrenzy(true);
+                }
+                state.score += points;
+                
+                const selectedBtn = Array.from(buttons).find(b => b.onclick.toString().includes(selected));
+                selectedBtn.classList.add('bg-green-500/30', 'border-green-500');
+                
+                showStatus("CHÍNH XÁC + " + points, "text-green-400");
+                document.getElementById('score-val').innerText = state.score.toLocaleString();
+                
+                if (state.combo >= 2) {
+                    document.getElementById('combo-container').classList.remove('hidden');
+                    document.getElementById('combo-val').innerText = state.combo;
+                }
+            } else {
+                state.combo = 0;
+                document.getElementById('combo-container').classList.add('hidden');
+                
+                buttons.forEach(b => {
+                    const btnIdx = state.questions[state.currentIdx].a.indexOf(b.innerText.trim().substring(2));
+                    if (btnIdx === correct) b.classList.add('border-green-500', 'bg-green-500/10');
+                });
+
+                takeDamage(20);
+                showStatus("SAI RỒI!", "text-red-500");
+                triggerShake();
+            }
+
+            setTimeout(nextQuestion, 1200);
+        }
+
+        function takeDamage(amount) {
+            state.hp -= amount;
+            const hpBar = document.getElementById('hp-bar');
+            const hpText = document.getElementById('hp-text');
+            
+            hpBar.style.width = Math.max(0, state.hp) + "%";
+            hpText.innerText = Math.max(0, state.hp) + "%";
+            
+            const overlay = document.getElementById('damage-overlay');
+            overlay.style.opacity = "1";
+            setTimeout(() => overlay.style.opacity = "0", 300);
+
+            if (state.hp <= 0) endGame(false);
+        }
+
+        function showStatus(msg, colorClass) {
+            const status = document.getElementById('status-msg');
+            status.innerText = msg;
+            status.className = `text-xs font-bold text-center tracking-widest uppercase mb-6 ${colorClass}`;
+            setTimeout(() => {
+                if (state.hp > 0) {
+                    status.innerText = "Hệ thống ổn định";
+                    status.className = "text-xs font-bold text-cyan-400 text-center tracking-widest uppercase mb-6";
+                }
+            }, 1000);
+        }
+
+        function triggerFrenzy(active) {
+            const fx = document.getElementById('frenzy-fx');
+            fx.style.opacity = active ? "1" : "0";
+            if (active) setTimeout(() => triggerFrenzy(false), 800);
+        }
+
+        function triggerShake() {
+            const arena = document.getElementById('arena');
+            arena.classList.add('shake');
+            setTimeout(() => arena.classList.remove('shake'), 500);
+        }
+
+        function nextQuestion() {
+            if (state.hp <= 0) return;
+            state.currentIdx++;
+            loadQuestion();
+        }
+
+        function endGame(success) {
+            clearInterval(timerInterval);
+            document.getElementById('game-screen').classList.add('hidden');
+            document.getElementById('end-screen').classList.remove('hidden');
+            
+            const title = document.getElementById('end-title');
+            title.innerText = success ? "HOÀN THÀNH" : "THẤT BẠI";
+            title.className = `title-font text-5xl font-black italic ${success ? 'text-green-400' : 'text-red-500'}`;
+            
+            document.getElementById('final-score').innerText = state.score.toLocaleString();
+            document.getElementById('stat-acc').innerText = Math.round((state.correctCount / 20) * 100) + "%";
+            document.getElementById('stat-combo').innerText = state.maxCombo;
+        }
+
+        updateHUD();
+        function updateHUD() {
+            document.getElementById('score-val').innerText = "0";
+        }
+    </script>
+</body>
+</html>View on SlideShare
+
+1 of 239
+
+
+
+
+1 of 239
+
